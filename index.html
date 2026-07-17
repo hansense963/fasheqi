@@ -281,7 +281,11 @@ function detectDeviceName(){
 // ============================================================
 var FB={_db:null,_storage:null,_ready:false};
 FB.init=function(){
-  if(typeof firebase==='undefined')return Promise.reject(new Error('Firebase SDK 未加载'));
+  if(typeof firebase==='undefined')return Promise.reject(new Error('Firebase SDK 未加载，请检查网络'));
+  // Validate config
+  if(FIREBASE_CONFIG.apiKey==='YOUR_API_KEY'||FIREBASE_CONFIG.projectId==='YOUR_PROJECT_ID'){
+    return Promise.reject(new Error('请在代码中替换 FIREBASE_CONFIG 为你的 Firebase 项目配置'));
+  }
   try{
     firebase.initializeApp(FIREBASE_CONFIG);
   }catch(e){
@@ -290,10 +294,7 @@ FB.init=function(){
   FB._db=firebase.firestore();
   FB._storage=firebase.storage();
   FB._ready=true;
-  // Enable offline cache for faster reads
-  return FB._db.enablePersistence({synchronizeTabs:false}).catch(function(e){
-    console.warn('Firebase 离线缓存不可用:',e.code);
-  });
+  return Promise.resolve();
 };
 
 // ---- User operations (Firestore: users/{id}) ----
@@ -315,25 +316,29 @@ FB.countUsers=function(){
 };
 
 // ---- Photo operations (Firestore: photos/{id} + Storage: photos/{id}/...) ----
+/** Upload a blob to Storage, returning a proper Promise */
+FB._upload=function(path,blob){
+  return new Promise(function(ok,err){
+    var task=FB._storage.ref(path).put(blob);
+    task.then(function(){ok();}).catch(function(e){err(e);});
+  });
+};
+
 FB.addPhoto=function(photo){
-  var self=this;
-  // Upload blobs to Storage in parallel
-  var rawRef=self._storage.ref('photos/'+photo.id+'/raw');
-  var dispRef=self._storage.ref('photos/'+photo.id+'/disp');
-  var thumbRef=self._storage.ref('photos/'+photo.id+'/thumb');
+  // Upload blobs to Storage in parallel (wrapped as proper Promises)
   return Promise.all([
-    rawRef.put(photo._rawBlob),
-    dispRef.put(photo._dispBlob),
-    thumbRef.put(photo._thumbBlob)
+    FB._upload('photos/'+photo.id+'/raw',photo._rawBlob),
+    FB._upload('photos/'+photo.id+'/disp',photo._dispBlob),
+    FB._upload('photos/'+photo.id+'/thumb',photo._thumbBlob)
   ]).then(function(){
-    // Save metadata to Firestore (without blobs)
+    // Save metadata to Firestore
     var doc={
       id:photo.id,fileName:photo.fileName,fileSize:photo.fileSize,
       format:photo.format,dispW:photo.dispW,dispH:photo.dispH,added:photo.added,
       userId:photo.userId,deviceId:photo.deviceId||null,
       sourceUserId:photo.sourceUserId||null,sourceUsername:photo.sourceUsername||null
     };
-    return self._db.collection('photos').doc(photo.id).set(doc);
+    return FB._db.collection('photos').doc(photo.id).set(doc);
   });
 };
 
@@ -620,17 +625,23 @@ var App={
     var self=this,total=files.length;
     console.log('Importing '+total+' file(s)...');
     self._showLoad('导入中 (0/'+total+')...');
-    var n=0,failed=0,CONCURRENCY=4;
+    var n=0,failed=0,firstErr='',CONCURRENCY=3;
     function updateProgress(){self._showLoad('导入中 ('+(n+failed)+'/'+total+')...');}
     function processOne(file){
-      return self._importOne(file).then(function(){n++;updateProgress();}).catch(function(e){failed++;console.error('Failed:',file.name,e);updateProgress();});
+      return self._importOne(file).then(function(){
+        n++;updateProgress();
+      }).catch(function(e){
+        failed++;if(!firstErr)firstErr=e.message||String(e);
+        console.error('Import failed:',file.name,e);
+        updateProgress();
+      });
     }
     var idx=0;
     function nextBatch(){
       if(idx>=total){
         self._hideLoad();self.refresh();
-        if(n>0)toast('成功导入 '+n+' / '+total+' 张'+(failed>0?('，'+failed+' 张失败'):''),'ok');
-        else toast('导入失败，请检查文件格式','err');
+        if(n>0)toast('成功导入 '+n+' / '+total+' 张'+(failed>0?('，'+failed+' 张失败'):''),n>0?'ok':'err');
+        else toast('导入失败: '+(firstErr||'未知错误'),'err');
         return;
       }
       var batch=[];
@@ -655,6 +666,7 @@ var App={
       return blobToImg(blob).then(function(img){return {disp:blob,raw:blob,w:img.width,h:img.height};});
     }).then(function(r){
       return self._makeThumb(r.disp,r.w,r.h).then(function(thumb){
+        if(!FB._ready)throw new Error('Firebase 未初始化，请检查配置');
         var photoId=uid();
         var photo={
           id:photoId,fileName:file.name,fileSize:file.size,
@@ -665,7 +677,9 @@ var App={
           sourceUserId:null,sourceUsername:null,
           _rawBlob:r.raw,_dispBlob:r.disp,_thumbBlob:thumb
         };
-        return FB.addPhoto(photo);
+        return FB.addPhoto(photo).catch(function(e){
+          throw new Error('上传失败: '+(e.message||e.code||'请检查 Firebase Storage 规则'));
+        });
       });
     });
   },
@@ -1022,9 +1036,9 @@ document.addEventListener('DOMContentLoaded',function(){
     }
   }).catch(function(e){
     console.error('Init failed:',e);
-    // If Firebase not configured, show login anyway with a hint
+    var msg=e.message||String(e);
     Auth.showLogin();
-    document.getElementById('login-err').textContent='请先配置 Firebase: 在代码中替换 FIREBASE_CONFIG';
+    document.getElementById('login-err').textContent='初始化失败: '+msg;
   });
 });
 </script>
