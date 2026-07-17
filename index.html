@@ -1,0 +1,1319 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RAW Photo Vault</title>
+<style>
+:root{--bg:#1a1a1a;--bg2:#222;--bg3:#252525;--bg4:#2a2a2a;--bg5:#333;--bd:#3a3a3a;--t1:#ccc;--t2:#999;--tw:#fff;--ac:#4a9eff;--ac3:#1a2a3a;--ok:#4caf84;--err:#e05555;--fn:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;--sw:260px;--th:44px}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden}
+body{font-family:var(--fn);background:var(--bg);color:var(--t1);display:flex;flex-direction:column;user-select:none}
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#444;border-radius:3px}
+.toolbar{height:var(--th);background:var(--bg2);border-bottom:1px solid var(--bd);display:flex;align-items:center;padding:0 10px;gap:6px;z-index:100;flex-shrink:0}
+.toolbar .logo{font-size:14px;font-weight:700;color:var(--tw);margin-right:12px}
+.toolbar .logo span{color:var(--ac)}
+.toolbar .sep{width:1px;height:18px;background:var(--bd);margin:0 2px}
+.toolbar button{background:transparent;border:1px solid transparent;color:var(--t1);padding:5px 10px;border-radius:4px;cursor:pointer;font-size:11px;font-family:var(--fn);white-space:nowrap;transition:all 0.15s;display:flex;align-items:center;gap:4px}
+.toolbar button:hover{background:var(--bg5);border-color:var(--bd)}
+.toolbar button.primary{background:var(--ac);color:#fff;border-color:var(--ac)}
+.toolbar button:disabled{opacity:0.35;cursor:default}
+.main-layout{display:flex;flex:1;overflow:hidden}
+.sidebar{width:var(--sw);background:var(--bg2);border-right:1px solid var(--bd);display:flex;flex-direction:column;flex-shrink:0}
+.sidebar-header{padding:10px 12px;border-bottom:1px solid var(--bd);font-size:11px;font-weight:600;color:var(--t2);display:flex;justify-content:space-between}
+.sidebar-list{flex:1;overflow-y:auto;padding:4px}
+.sidebar-item{display:flex;align-items:center;gap:8px;padding:8px;border-radius:6px;cursor:pointer;border:2px solid transparent;transition:all 0.12s}
+.sidebar-item:hover{background:var(--bg5)}
+.sidebar-item.active{background:var(--ac3);border-color:var(--ac)}
+.sidebar-item .thumb{width:48px;height:36px;border-radius:3px;object-fit:cover;background:var(--bg4);flex-shrink:0}
+.sidebar-item .info{flex:1;min-width:0}
+.sidebar-item .name{font-size:11px;font-weight:500;color:var(--tw);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sidebar-item .meta{font-size:9px;color:var(--t2)}
+.sidebar-item .badge{font-size:8px;padding:1px 5px;border-radius:8px;font-weight:600}
+.badge-raw{background:#e07b30;color:#fff}
+.badge-other{background:#555;color:#999}
+.sidebar-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--t2);font-size:12px;gap:10px;padding:20px;text-align:center}
+.sidebar-empty .icon{font-size:36px;opacity:0.4}
+.viewer{flex:1;display:flex;align-items:center;justify-content:center;background:#111;overflow:hidden;position:relative}
+.viewer img{max-width:100%;max-height:100%;object-fit:contain;image-rendering:auto;box-shadow:0 2px 30px rgba(0,0,0,0.5)}
+.viewer .info-bar{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.75);color:#fff;padding:6px 14px;border-radius:16px;font-size:10px;pointer-events:none;display:flex;gap:12px}
+.viewer-empty{color:var(--t2);font-size:13px;text-align:center;line-height:1.8}
+.viewer-empty .icon{font-size:56px;display:block;margin-bottom:14px;opacity:0.3}
+.viewer-empty .hint{font-size:11px;opacity:0.6;margin-top:6px}
+.loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.4);z-index:10}
+.loading .spin{width:28px;height:28px;border:3px solid var(--bd);border-top-color:var(--ac);border-radius:50%;animation:spin 0.8s linear infinite}
+.loading .msg{color:var(--t2);font-size:11px;margin-left:10px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.statusbar{height:24px;background:var(--bg2);border-top:1px solid var(--bd);display:flex;align-items:center;padding:0 10px;gap:14px;font-size:10px;color:var(--t2);flex-shrink:0}
+.drop-overlay{position:fixed;inset:0;background:rgba(30,70,120,0.85);z-index:900;display:flex;align-items:center;justify-content:center;border:3px dashed var(--ac);pointer-events:none;opacity:0;transition:opacity 0.2s}
+.drop-overlay.on{opacity:1}
+.drop-overlay .text{font-size:22px;font-weight:700;color:#fff;text-align:center}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;display:flex;align-items:center;justify-content:center}
+.modal{background:var(--bg3);border:1px solid var(--bd);border-radius:8px;padding:18px;max-width:480px;width:90%;box-shadow:0 8px 40px rgba(0,0,0,0.5)}
+.modal h3{font-size:14px;color:var(--tw);margin-bottom:10px}
+.modal p{font-size:11px;color:var(--t2);margin-bottom:6px;line-height:1.6}
+.modal .btns{display:flex;gap:6px;margin-top:14px;justify-content:flex-end}
+.modal .btns button{padding:7px 14px;border-radius:4px;cursor:pointer;font-size:11px;font-family:var(--fn);border:1px solid var(--bd);background:var(--bg4);color:var(--t1)}
+.modal .btns button.primary{background:var(--ac);color:#fff;border-color:var(--ac)}
+.modal .btns button.danger{background:var(--err);color:#fff;border-color:var(--err)}
+.modal .fgrid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+.modal .fopt{padding:10px 6px;text-align:center;border:2px solid var(--bd);border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;background:var(--bg4);color:var(--t1);transition:all 0.15s;font-family:var(--fn)}
+.modal .fopt:hover,.modal .fopt.sel{border-color:var(--ac);background:#1a2a3a;color:var(--ac)}
+.modal .qrow{display:flex;align-items:center;gap:8px;margin-top:10px}
+.modal .qrow input[type=range]{flex:1}
+.toast-box{position:fixed;bottom:36px;left:50%;transform:translateX(-50%);z-index:2000;display:flex;flex-direction:column;gap:5px;pointer-events:none}
+.toast{padding:9px 16px;border-radius:6px;font-size:11px;font-weight:500;pointer-events:auto;box-shadow:0 4px 16px rgba(0,0,0,0.4);text-align:center;animation:ti 0.3s ease,to 0.3s ease 2.5s forwards}
+.toast.info{background:#2a4a6a;color:#b8d8ff}
+.toast.ok{background:#2a4a3a;color:#a0e0b8}
+.toast.err{background:#4a2a2a;color:#f0a0a0}
+@keyframes ti{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes to{from{opacity:1}to{opacity:0}}
+
+/* ============================================================
+   Login Page Styles
+   ============================================================ */
+.login-overlay{position:fixed;inset:0;background:var(--bg);z-index:5000;display:flex;align-items:center;justify-content:center;flex-direction:column}
+.login-card{background:var(--bg2);border:1px solid var(--bd);border-radius:10px;padding:30px 28px;width:360px;max-width:92%;box-shadow:0 8px 40px rgba(0,0,0,0.5);text-align:center}
+.login-card .login-logo{font-size:24px;font-weight:700;color:var(--tw);margin-bottom:6px}
+.login-card .login-logo span{color:var(--ac)}
+.login-card .login-sub{font-size:11px;color:var(--t2);margin-bottom:22px}
+.login-card .field{text-align:left;margin-bottom:14px}
+.login-card .field label{display:block;font-size:10px;font-weight:600;color:var(--t2);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px}
+.login-card .field input{width:100%;padding:9px 11px;border-radius:5px;border:1px solid var(--bd);background:var(--bg4);color:var(--tw);font-size:13px;font-family:var(--fn);outline:none;transition:border 0.15s}
+.login-card .field input:focus{border-color:var(--ac)}
+.login-card .login-btn{width:100%;padding:10px;border-radius:5px;border:none;background:var(--ac);color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--fn);margin-top:6px;transition:opacity 0.15s}
+.login-card .login-btn:hover{opacity:0.9}
+.login-card .login-btn:disabled{opacity:0.5;cursor:default}
+.login-card .login-err{font-size:10px;color:var(--err);margin-top:10px;min-height:16px}
+.login-card .login-hint{font-size:9px;color:var(--t2);margin-top:14px;line-height:1.6}
+
+/* ============================================================
+   Register Modal form fields
+   ============================================================ */
+.modal .form-field{margin-bottom:10px}
+.modal .form-field label{display:block;font-size:10px;font-weight:600;color:var(--t2);margin-bottom:3px;text-transform:uppercase}
+.modal .form-field input{width:100%;padding:8px 10px;border-radius:4px;border:1px solid var(--bd);background:var(--bg4);color:var(--tw);font-size:12px;font-family:var(--fn);outline:none}
+.modal .form-field input:focus{border-color:var(--ac)}
+.modal .form-err{font-size:10px;color:var(--err);min-height:14px;margin-top:2px}
+
+/* Admin badge in toolbar */
+.toolbar .badge-admin{font-size:8px;padding:2px 6px;border-radius:8px;background:var(--ac);color:#fff;font-weight:600;margin-left:2px}
+
+/* ============================================================
+   Collapsible sidebar sections
+   ============================================================ */
+.sec-header{padding:7px 12px;font-size:11px;font-weight:600;color:var(--t2);cursor:pointer;display:flex;align-items:center;gap:4px;border-bottom:1px solid var(--bd);border-top:1px solid var(--bd);user-select:none;background:var(--bg3);position:sticky;top:0;z-index:1}
+.sec-header:hover{color:var(--tw)}
+.sec-header .arr{transition:transform 0.2s;font-size:9px;display:inline-block}
+.sec-header.folded .arr{transform:rotate(-90deg)}
+.sec-body.hidden{display:none}
+.sec-count{font-size:9px;color:var(--t2);margin-left:auto}
+
+/* ============================================================
+   Source attribution badge
+   ============================================================ */
+.src-badge{font-size:7px;padding:1px 5px;border-radius:6px;background:#5b3a9e;color:#c8b8f0;white-space:nowrap;flex-shrink:0}
+
+/* ============================================================
+   Send dialog user list
+   ============================================================ */
+.send-user-list{max-height:240px;overflow-y:auto;margin:8px 0}
+.send-user-card{display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:6px;cursor:pointer;border:2px solid var(--bd);margin-bottom:4px;transition:all 0.15s}
+.send-user-card:hover{background:var(--bg5);border-color:var(--ac)}
+.send-user-card.sel{background:#1a2a3a;border-color:var(--ac)}
+.send-user-icon{font-size:15px}
+.send-user-name{font-weight:600;font-size:12px;color:var(--tw);flex:1}
+.send-user-role{font-size:9px;color:var(--t2)}
+.send-err{font-size:10px;color:var(--err);min-height:14px;margin-top:6px}
+
+/* ============================================================
+   Mobile responsive styles (max-width: 768px)
+   ============================================================ */
+@media(max-width:768px){
+  :root{--sw:100%;--th:40px}
+  body{overflow:auto}
+
+  /* Toolbar — compact icon buttons */
+  .toolbar{padding:0 4px;gap:3px}
+  .toolbar .logo{font-size:12px;margin-right:4px}
+  .toolbar button{padding:4px 7px;font-size:10px;gap:2px}
+  .toolbar button .btn-label{display:none}
+  .toolbar button.primary{padding:4px 8px}
+
+  /* Main layout — vertical stack */
+  .main-layout{flex-direction:column}
+
+  /* Sidebar — collapsible top panel */
+  .sidebar{width:100%;max-height:45vh;border-right:none;border-bottom:1px solid var(--bd);flex-shrink:0;transition:max-height 0.25s ease}
+  .sidebar.collapsed{max-height:0;overflow:hidden;border-bottom:none}
+  .sidebar-header{padding:6px 10px;font-size:10px}
+  .sidebar-list{padding:2px}
+  .sec-header{padding:5px 8px;font-size:10px}
+  .sidebar-item{padding:6px;border-radius:4px}
+  .sidebar-item .thumb{width:40px;height:30px;border-radius:2px}
+  .sidebar-item .name{font-size:10px}
+  .sidebar-item .meta{font-size:8px}
+  .sidebar-item .badge{font-size:7px;padding:1px 3px}
+
+  /* Viewer — fills remaining space */
+  .viewer{min-height:40vh;flex:1}
+  .viewer img{max-width:98%;max-height:98%}
+  .viewer .info-bar{padding:4px 10px;font-size:9px;gap:8px;bottom:8px}
+
+  /* Mobile nav buttons on viewer */
+  .mobile-nav{position:absolute;top:50%;transform:translateY(-50%);z-index:50;
+    background:rgba(0,0,0,0.5);color:#fff;border:none;font-size:20px;
+    width:36px;height:48px;cursor:pointer;border-radius:4px;display:flex;
+    align-items:center;justify-content:center;transition:opacity 0.2s}
+  .mobile-nav:active{background:rgba(0,0,0,0.8)}
+  .mobile-nav.prev{left:4px}
+  .mobile-nav.next{right:4px}
+
+  /* Sidebar toggle bar */
+  .sidebar-toggle-bar{display:flex;align-items:center;justify-content:center;
+    padding:3px;background:var(--bg3);border-bottom:1px solid var(--bd);cursor:pointer}
+  .sidebar-toggle-bar .handle{width:40px;height:4px;border-radius:2px;background:var(--bd)}
+
+  /* Statusbar */
+  .statusbar{height:20px;padding:0 6px;gap:8px;font-size:9px}
+
+  /* Modals — full width */
+  .modal{padding:14px;border-radius:6px}
+  .modal h3{font-size:13px;margin-bottom:8px}
+  .modal .fgrid{grid-template-columns:1fr 1fr}
+  .modal .fopt{padding:8px 4px;font-size:10px}
+  .modal .btns button{padding:6px 10px;font-size:10px}
+  .send-user-card{padding:8px 10px}
+  .send-user-name{font-size:11px}
+
+  /* Login card */
+  .login-card{padding:24px 20px;width:340px}
+  .login-card .login-logo{font-size:20px}
+  .login-card .field input{padding:8px 10px;font-size:12px}
+
+  /* Drop overlay */
+  .drop-overlay .text{font-size:16px}
+
+  /* Toast */
+  .toast-box{bottom:20px}
+  .toast{padding:7px 12px;font-size:10px}
+
+  /* Sidebar empty state */
+  .sidebar-empty .icon{font-size:28px}
+}
+
+/* Sidebar toggle handle — hidden on desktop */
+.sidebar-toggle-bar{display:none}
+@media(max-width:768px){
+  .sidebar-toggle-bar{display:flex}
+}
+</style>
+</head>
+<body>
+
+<!-- ============================================================
+     Login Overlay
+     ============================================================ -->
+<div class="login-overlay" id="login-overlay">
+  <div class="login-card">
+    <div class="login-logo">RAW<span>Vault</span></div>
+    <div class="login-sub">请登录以查看您的照片库</div>
+    <div class="field">
+      <label>用户名</label>
+      <input type="text" id="login-user" placeholder="请输入用户名" autocomplete="username">
+    </div>
+    <div class="field">
+      <label>密码</label>
+      <input type="password" id="login-pass" placeholder="请输入密码" autocomplete="current-password">
+    </div>
+    <button class="login-btn" id="login-btn" onclick="Auth.doLogin()">登 录</button>
+    <div class="login-err" id="login-err"></div>
+    <div class="login-hint">管理员可注册新用户账号</div>
+  </div>
+</div>
+
+<div class="toolbar" id="toolbar" style="display:none">
+  <div class="logo">RAW<span>Vault</span></div>
+  <button onclick="App.importFiles()">📁 <span class="btn-label">导入</span></button>
+  <button id="btn-dl" class="primary" onclick="App.showExport()" disabled>💾 <span class="btn-label">下载</span></button>
+  <button id="btn-del" onclick="App.deleteCurrent()" disabled>🗑 <span class="btn-label">删除</span></button>
+  <button id="btn-send" onclick="App.showSend()" disabled>📨 <span class="btn-label">发送</span></button>
+  <button id="btn-reg" onclick="App.showRegister()" style="display:none">👤 <span class="btn-label">注册用户</span></button>
+  <span style="flex:1"></span>
+  <span id="st-user" style="font-size:10px;color:var(--ac)"></span>
+  <button id="btn-logout" onclick="Auth.logout()">🚪 退出</button>
+  <span style="font-size:10px;color:var(--t2)" id="st-count">共 0 张</span>
+</div>
+
+<div class="main-layout" id="main-layout" style="display:none">
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-header" id="sidebar-header-desktop">照片库 <span id="sidebar-count">0</span></div>
+    <div class="sidebar-toggle-bar" id="sidebar-toggle-bar" onclick="App.toggleSidebar()"><div class="handle"></div></div>
+    <div class="sidebar-list" id="sidebar-list">
+      <div class="sidebar-empty" id="sidebar-empty"><span class="icon">📷</span><div>还没有导入照片</div><div style="font-size:10px;opacity:0.6">点击「导入」或拖拽文件到此窗口</div></div>
+    </div>
+  </div>
+  <div class="viewer" id="viewer">
+    <div class="viewer-empty" id="viewer-empty"><span class="icon">🖼️</span><div>导入照片即可查看</div><div class="hint">RAW (CR2, NEF, ARW, DNG 等)<br>JPEG / PNG / TIFF / WebP</div></div>
+    <img id="viewer-img" style="display:none" alt="">
+    <button class="mobile-nav prev" id="nav-prev" style="display:none" onclick="App.navPhoto(-1)" title="上一张">◀</button>
+    <button class="mobile-nav next" id="nav-next" style="display:none" onclick="App.navPhoto(1)" title="下一张">▶</button>
+    <div class="info-bar" id="info-bar" style="display:none">
+      <span id="info-name"></span><span id="info-size"></span><span id="info-dim"></span><span id="info-fmt"></span><span id="info-source" style="display:none"></span>
+    </div>
+    <div class="loading" id="loading" style="display:none"><div class="spin"></div><span class="msg" id="loading-msg"></span></div>
+  </div>
+</div>
+
+<div class="statusbar" id="statusbar" style="display:none">
+  <span id="st-file">未打开文件</span>
+  <span style="flex:1"></span>
+  <span id="st-device"></span>
+  <span id="st-store"></span>
+</div>
+
+<div class="drop-overlay" id="drop-overlay"><div class="text">📥<br>释放导入</div></div>
+<div class="toast-box" id="toast-box"></div>
+
+<!-- File input — positioned offscreen, not display:none -->
+<input type="file" id="file-input" multiple accept="image/*,.cr2,.nef,.arw,.dng,.orf,.raf,.rw2,.cr3,.pef,.3fr,.mrw,.nrw,.srf,.sr2,.x3f,.erf,.mef,.dcr,.kdc,.raw" style="position:fixed;top:-100px;left:-100px;width:1px;height:1px;opacity:0">
+
+<script>
+var RAW_EXT=['cr2','cr3','nef','arw','dng','orf','raf','rw2','pef','3fr','mrw','nrw','srf','sr2','x3f','erf','mef','dcr','kdc','raw'];
+function uid(){return Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,8);}
+function fmtSize(b){return b<1024?b+' B':b<1048576?(b/1024).toFixed(1)+' KB':(b/1048576).toFixed(1)+' MB';}
+function esc(s){var d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+function toast(msg,tp){tp=tp||'info';var c=document.getElementById('toast-box');var e=document.createElement('div');e.className='toast '+tp;e.textContent=msg;c.appendChild(e);setTimeout(function(){e.remove();},2800);}
+
+/** Generate or retrieve a persistent device ID from localStorage */
+function getDeviceId(){
+  try{
+    var stored=localStorage.getItem('rv_deviceId');
+    if(stored)return stored;
+    var id=uid();
+    localStorage.setItem('rv_deviceId',id);
+    return id;
+  }catch(e){return uid();}
+}
+
+/** Detect a human-readable device name from user agent */
+function detectDeviceName(){
+  var ua=navigator.userAgent,os='Unknown',browser='Browser';
+  if(/Windows/i.test(ua))os='Windows';
+  else if(/Mac/i.test(ua))os='Mac';
+  else if(/iPhone|iPad|iPod/i.test(ua))os='iOS';
+  else if(/Android/i.test(ua))os='Android';
+  else if(/Linux/i.test(ua))os='Linux';
+  if(/Edg\//i.test(ua))browser='Edge';
+  else if(/Chrome/i.test(ua)&&!/Edg\//i.test(ua))browser='Chrome';
+  else if(/Safari/i.test(ua)&&!/Chrome/i.test(ua)&&!/Edg\//i.test(ua))browser='Safari';
+  else if(/Firefox/i.test(ua))browser='Firefox';
+  return os+' '+browser;
+}
+
+// ============================================================
+// Auth — Password hashing, session management
+// ============================================================
+var Auth={
+  _currentUser:null,
+
+  /** SHA-256 hash of a password string → hex */
+  hashPassword:function(password){
+    return crypto.subtle.digest('SHA-256',new TextEncoder().encode(password))
+      .then(function(hash){
+        return Array.from(new Uint8Array(hash)).map(function(b){return b.toString(16).padStart(2,'0');}).join('');
+      });
+  },
+
+  /** Retrieve the admin user record from the users store */
+  _getAdminUser:function(){
+    return new Promise(function(ok,err){
+      var t=DB._db.transaction('u','readonly');
+      var r=t.objectStore('u').getAll();
+      r.onsuccess=function(){
+        var admins=r.result.filter(function(u){return u.role==='admin';});
+        ok(admins.length>0?admins[0]:null);
+      };
+      r.onerror=function(e){err(e.target.error);};
+    });
+  },
+
+  /** Seed the admin account if no users exist yet */
+  seedAdmin:function(){
+    var self=this;
+    return new Promise(function(ok,err){
+      var t=DB._db.transaction('u','readonly');
+      var r=t.objectStore('u').count();
+      r.onsuccess=function(){
+        if(r.result>0){ok();return;} // users already exist
+        // Create admin user
+        self.hashPassword('handongxu*963.').then(function(hash){
+          var admin={
+            id:uid(),
+            username:'hansense',
+            passwordHash:hash,
+            role:'admin',
+            created:Date.now()
+          };
+          var tw=DB._db.transaction('u','readwrite');
+          var s=tw.objectStore('u');
+          s.add(admin);
+          tw.oncomplete=function(){ok();};
+          tw.onerror=function(e){err(e.target.error);};
+        }).catch(err);
+      };
+      r.onerror=function(e){err(e.target.error);};
+    });
+  },
+
+  /** Attempt login with username + password. Returns user object or null. */
+  login:function(username,password){
+    var self=this;
+    return self.hashPassword(password).then(function(hash){
+      return new Promise(function(ok,err){
+        var t=DB._db.transaction('u','readonly');
+        var r=t.objectStore('u').getAll();
+        r.onsuccess=function(){
+          var users=r.result;
+          for(var i=0;i<users.length;i++){
+            if(users[i].username===username&&users[i].passwordHash===hash){
+              ok(users[i]);return;
+            }
+          }
+          ok(null);
+        };
+        r.onerror=function(e){err(e.target.error);};
+      });
+    });
+  },
+
+  /** Save current user to session */
+  setSession:function(user){
+    this._currentUser=user;
+    sessionStorage.setItem('rawvault_user',JSON.stringify({
+      id:user.id,
+      username:user.username,
+      role:user.role
+    }));
+  },
+
+  /** Clear session */
+  clearSession:function(){
+    this._currentUser=null;
+    sessionStorage.removeItem('rawvault_user');
+  },
+
+  /** Check for existing session. Returns true if valid session found. */
+  checkSession:function(){
+    var data=sessionStorage.getItem('rawvault_user');
+    if(!data)return false;
+    try{
+      var u=JSON.parse(data);
+      if(!u||!u.id||!u.username)return false;
+      this._currentUser=u;
+      return true;
+    }catch(e){return false;}
+  },
+
+  get currentUser(){return this._currentUser;},
+
+  /** Show the login overlay */
+  showLogin:function(){
+    var self=this;
+    document.getElementById('login-overlay').style.display='flex';
+    document.getElementById('toolbar').style.display='none';
+    document.getElementById('main-layout').style.display='none';
+    document.getElementById('statusbar').style.display='none';
+    document.getElementById('login-user').value='';
+    document.getElementById('login-pass').value='';
+    document.getElementById('login-err').textContent='';
+    document.getElementById('login-btn').disabled=false;
+    document.getElementById('login-user').focus();
+    // Bind Enter key for login form
+    document.getElementById('login-pass').onkeydown=function(e){
+      if(e.key==='Enter')self.doLogin();
+    };
+    document.getElementById('login-user').onkeydown=function(e){
+      if(e.key==='Enter'){document.getElementById('login-pass').focus();}
+    };
+  },
+
+  /** Hide the login overlay and show the main UI */
+  hideLogin:function(){
+    document.getElementById('login-overlay').style.display='none';
+    document.getElementById('toolbar').style.display='flex';
+    document.getElementById('main-layout').style.display='flex';
+    document.getElementById('statusbar').style.display='flex';
+  },
+
+  /** Login button handler */
+  doLogin:function(){
+    var self=this;
+    var username=document.getElementById('login-user').value.trim();
+    var password=document.getElementById('login-pass').value;
+    var errEl=document.getElementById('login-err');
+    var btn=document.getElementById('login-btn');
+
+    if(!username){errEl.textContent='请输入用户名';return;}
+    if(!password){errEl.textContent='请输入密码';return;}
+
+    btn.disabled=true;
+    errEl.textContent='';
+    btn.textContent='登录中...';
+
+    self.login(username,password).then(function(user){
+      if(user){
+        self.setSession(user);
+        self.hideLogin();
+        App.init();
+      }else{
+        errEl.textContent='用户名或密码错误';
+        btn.disabled=false;
+        btn.textContent='登 录';
+      }
+    }).catch(function(e){
+      console.error(e);
+      errEl.textContent='登录失败，请重试';
+      btn.disabled=false;
+      btn.textContent='登 录';
+    });
+  },
+
+  /** Logout */
+  logout:function(){
+    var self=this;
+    // Clean up URL caches
+    for(var key in App.urlCache){
+      URL.revokeObjectURL(App.urlCache[key]);
+    }
+    App.urlCache={};
+    App.photos=[];
+    App.cur=null;
+    App._sectionState={};
+
+    // Reset UI
+    document.getElementById('viewer-img').style.display='none';
+    document.getElementById('info-bar').style.display='none';
+    document.getElementById('viewer-empty').style.display='flex';
+    document.getElementById('st-file').textContent='未打开文件';
+    document.getElementById('btn-dl').disabled=true;
+    document.getElementById('btn-del').disabled=true;
+    document.getElementById('btn-send').disabled=true;
+    document.getElementById('btn-reg').style.display='none';
+    document.getElementById('st-count').textContent='共 0 张';
+    document.getElementById('st-user').textContent='';
+    document.getElementById('sidebar-list').innerHTML='<div class="sidebar-empty"><span class="icon">📷</span><div>还没有导入照片</div><div style="font-size:10px;opacity:0.6">点击「导入」或拖拽文件到此窗口</div></div>';
+    document.getElementById('sidebar-count').textContent='0';
+
+    self.clearSession();
+    self.showLogin();
+  }
+};
+
+// ============================================================
+// IndexedDB
+// ============================================================
+var DB={_db:null};
+DB.open=function(){
+  return new Promise(function(ok,err){
+    var r=indexedDB.open('RawVault2',2);
+    r.onupgradeneeded=function(e){
+      var db=e.target.result;
+      if(e.oldVersion<1){
+        if(!db.objectStoreNames.contains('p'))db.createObjectStore('p',{keyPath:'id'});
+      }
+      if(e.oldVersion<2){
+        if(!db.objectStoreNames.contains('u'))db.createObjectStore('u',{keyPath:'id'});
+        // Create index on userId for photo queries
+        if(db.objectStoreNames.contains('p')){
+          var store=e.target.transaction.objectStore('p');
+          if(!store.indexNames.contains('byUserId')){
+            store.createIndex('byUserId','userId',{unique:false});
+          }
+        }
+      }
+    };
+    r.onsuccess=function(e){DB._db=e.target.result;ok();};
+    r.onerror=function(e){err(e.target.error);};
+  });
+};
+
+DB.add=function(p){
+  return new Promise(function(ok,err){
+    var t=DB._db.transaction('p','readwrite');
+    var r=t.objectStore('p').add(p);
+    r.onsuccess=function(){ok();};
+    r.onerror=function(e){err(e.target.error);};
+  });
+};
+
+DB.all=function(){
+  return new Promise(function(ok,err){
+    var cur=App.currentUser;
+    if(!cur){ok([]);return;}
+    var t=DB._db.transaction('p','readonly');
+    var r=t.objectStore('p').getAll();
+    r.onsuccess=function(){
+      var photos=r.result.filter(function(p){
+        // Photos without userId (legacy) are visible only to admin
+        if(!p.userId)return cur.role==='admin';
+        return p.userId===cur.id;
+      });
+      ok(photos.sort(function(a,b){return b.added-a.added;}));
+    };
+    r.onerror=function(e){err(e.target.error);};
+  });
+};
+
+DB.get=function(id){
+  return new Promise(function(ok,err){
+    var t=DB._db.transaction('p','readonly');
+    var r=t.objectStore('p').get(id);
+    r.onsuccess=function(e){ok(e.target.result);};
+    r.onerror=function(e){err(e.target.error);};
+  });
+};
+
+DB.del=function(id){
+  return new Promise(function(ok,err){
+    var t=DB._db.transaction('p','readwrite');
+    var r=t.objectStore('p').delete(id);
+    r.onsuccess=function(){ok();};
+    r.onerror=function(e){err(e.target.error);};
+  });
+};
+
+// ============================================================
+// User management (admin only)
+// ============================================================
+var UserStore={
+  /** Check if username already exists */
+  exists:function(username){
+    return new Promise(function(ok,err){
+      var t=DB._db.transaction('u','readonly');
+      var r=t.objectStore('u').getAll();
+      r.onsuccess=function(){
+        var found=r.result.some(function(u){return u.username===username;});
+        ok(found);
+      };
+      r.onerror=function(e){err(e.target.error);};
+    });
+  },
+
+  /** Create a new user. Returns the user object. */
+  create:function(username,password,role){
+    role=role||'user';
+    return Auth.hashPassword(password).then(function(hash){
+      return new Promise(function(ok,err){
+        var user={id:uid(),username:username,passwordHash:hash,role:role,created:Date.now()};
+        var t=DB._db.transaction('u','readwrite');
+        var s=t.objectStore('u');
+        s.add(user);
+        t.oncomplete=function(){ok(user);};
+        t.onerror=function(e){err(e.target.error);};
+      });
+    });
+  },
+
+  /** Get all users (admin only) */
+  all:function(){
+    return new Promise(function(ok,err){
+      var t=DB._db.transaction('u','readonly');
+      var r=t.objectStore('u').getAll();
+      r.onsuccess=function(){ok(r.result);};
+      r.onerror=function(e){err(e.target.error);};
+    });
+  }
+};
+
+// ============================================================
+// RAW JPEG extraction (supports TIFF SubIFD for high-res previews)
+// ============================================================
+function isRAW(fn){return RAW_EXT.indexOf(fn.split('.').pop().toLowerCase())>=0;}
+
+function extractBestJPEG(ab){
+  var b=new Uint8Array(ab);
+  // Method 1: TIFF SubIFD (gets full-resolution preview from CR2/NEF/ARW/DNG)
+  try{
+    var v=new DataView(ab),le=(v.getUint16(0)===0x4949);
+    if(v.getUint16(2,le)===0x002A){
+      var ifd=_readIFD(v,v.getUint32(4,le),le);
+      var sub=ifd[0x014A];
+      if(sub&&(sub.type===4||sub.type===13)){
+        var offs=[];
+        if(sub.total<=4)offs.push(v.getUint32(sub.voLoc,le));
+        else for(var i=0;i<sub.cnt;i++)offs.push(v.getUint32(sub.vo+i*4,le));
+        for(var oi=0;oi<offs.length;oi++){
+          var se=_readIFD(v,offs[oi],le);
+          if(se[0x0103]&&se[0x0103].val===7&&se[0x0111]&&se[0x0117]){
+            var dOff=v.getUint32(se[0x0111].vo,le),dLen=v.getUint32(se[0x0117].vo,le);
+            if(dLen>30000)return b.slice(dOff,dOff+dLen);
+          }
+        }
+      }
+      var jOff=ifd[0x0201],jLen=ifd[0x0202];
+      if(jOff&&jLen&&jLen.val>30000)return b.slice(jOff.val,jOff.val+jLen.val);
+    }
+  }catch(e){}
+  // Method 2: brute-force JPEG scan
+  var best=null;
+  for(var i=0;i<b.length-3;i++){
+    if(b[i]===0xFF&&b[i+1]===0xD8&&b[i+2]===0xFF){
+      for(var j=i+2;j<Math.min(i+50000000,b.length-1);j++){
+        if(b[j]===0xFF&&b[j+1]===0xD9){var len=j+2-i;if(len>10000&&(!best||len>best.len))best={off:i,len:len};break;}
+        if(b[j]===0xFF&&b[j+1]===0xDA){var k=j+2;while(k<b.length-1){if(b[k]===0xFF&&b[k+1]!==0x00&&b[k+1]!==0xFF){j=k-1;break;}k++;}if(k>=b.length-1)break;}
+      }
+    }
+  }
+  return best?b.slice(best.off,best.off+best.len):null;
+}
+
+function _readIFD(v,offset,le){
+  var e={};
+  try{
+    var cnt=v.getUint16(offset,le);
+    for(var i=0;i<cnt&&i<100;i++){
+      var eo=offset+2+i*12,tag=v.getUint16(eo,le),type=v.getUint16(eo+2,le),cn=v.getUint32(eo+4,le);
+      var ts=({1:1,2:1,3:2,4:4,5:8,6:1,7:1,8:2,9:4,10:8,11:4,12:8,13:4})[type]||1;
+      var total=cn*ts,vo=total<=4?(eo+8):v.getUint32(eo+8,le);
+      var val;if(type===3)val=total<=4?v.getUint16(eo+8,le):v.getUint16(vo,le);else if(type===4||type===13)val=total<=4?v.getUint32(eo+8,le):v.getUint32(vo,le);else val=total<=4?v.getUint32(eo+8,le):v.getUint32(vo,le);
+      e[tag]={tag:tag,type:type,cnt:cn,val:val,vo:vo,total:total,voLoc:eo+8};
+    }
+  }catch(ex){}
+  return e;
+}
+
+function blobToImg(blob){
+  return new Promise(function(ok,err){
+    var img=new Image(),url=URL.createObjectURL(blob);
+    img.onload=function(){URL.revokeObjectURL(url);ok(img);};
+    img.onerror=function(){URL.revokeObjectURL(url);err(new Error('decode'));};
+    img.src=url;
+  });
+}
+
+// ============================================================
+// App
+// ============================================================
+var App={
+  photos:[],cur:null,urlCache:{},_sectionState:{},
+  _deviceId:null,_deviceName:null,
+  get currentUser(){return Auth.currentUser;},
+
+  init:function(){
+    var self=this;
+    self._deviceId=getDeviceId();
+    self._deviceName=detectDeviceName();
+    self._bindEvents();
+    self._showLoad('加载照片库...');
+
+    // Update UI for current user
+    document.getElementById('st-user').textContent='👤 '+self.currentUser.username;
+    document.getElementById('st-device').textContent='📱 '+self._deviceName;
+    if(self.currentUser.role==='admin'){
+      document.getElementById('btn-reg').style.display='flex';
+    }
+
+    // Migrate legacy photos (without userId) to admin, then assign deviceId
+    self._migratePhotos().then(function(){
+      return self._migrateDeviceIds();
+    }).then(function(){
+      return self.refresh();
+    }).then(function(){
+      self._hideLoad();
+      self._updateStore();
+    }).catch(function(e){
+      self._hideLoad();
+      console.error(e);
+      toast('存储初始化失败，请检查浏览器权限','err');
+    });
+  },
+
+  /** Assign legacy photos (no userId) to the current admin user */
+  _migratePhotos:function(){
+    var self=this;
+    if(self.currentUser.role!=='admin')return Promise.resolve();
+    return new Promise(function(ok,err){
+      var t=DB._db.transaction('p','readwrite');
+      var s=t.objectStore('p');
+      var r=s.getAll();
+      r.onsuccess=function(){
+        var changed=false;
+        for(var i=0;i<r.result.length;i++){
+          if(!r.result[i].userId){
+            r.result[i].userId=self.currentUser.id;
+            s.put(r.result[i]);
+            changed=true;
+          }
+        }
+        t.oncomplete=function(){ok();};
+        if(!changed){ok();}
+      };
+      r.onerror=function(e){err(e.target.error);};
+    });
+  },
+
+  /** Assign current deviceId to legacy photos that lack one */
+  _migrateDeviceIds:function(){
+    var self=this;
+    return new Promise(function(ok,err){
+      var t=DB._db.transaction('p','readwrite');
+      var s=t.objectStore('p');
+      var r=s.getAll();
+      r.onsuccess=function(){
+        var changed=false;
+        for(var i=0;i<r.result.length;i++){
+          var p=r.result[i];
+          if(!p.deviceId&&p.userId===self.currentUser.id&&!p.sourceUserId){
+            p.deviceId=self._deviceId;
+            s.put(p);
+            changed=true;
+          }
+        }
+        t.oncomplete=function(){ok();};
+        if(!changed){ok();}
+      };
+      r.onerror=function(e){err(e.target.error);};
+    });
+  },
+
+  // ---- Loading indicator ----
+  _showLoad:function(msg){
+    var el=document.getElementById('loading');el.style.display='flex';
+    document.getElementById('loading-msg').textContent=msg||'';
+  },
+  _hideLoad:function(){document.getElementById('loading').style.display='none';},
+
+  // ---- Events ----
+  _bindEvents:function(){
+    var self=this;
+    // Drag & drop
+    var drop=document.getElementById('drop-overlay'),dc=0;
+    document.addEventListener('dragenter',function(e){e.preventDefault();dc++;drop.classList.add('on');});
+    document.addEventListener('dragleave',function(e){e.preventDefault();dc--;if(dc<=0){dc=0;drop.classList.remove('on');}});
+    document.addEventListener('dragover',function(e){e.preventDefault();});
+    document.addEventListener('drop',function(e){e.preventDefault();dc=0;drop.classList.remove('on');if(e.dataTransfer.files.length)self._doImport(e.dataTransfer.files);});
+
+    // File input
+    var fi=document.getElementById('file-input');
+    fi.addEventListener('change',function(){
+      if(this.files.length){self._doImport(this.files);this.value='';}
+    });
+
+    // Keyboard
+    document.addEventListener('keydown',function(e){
+      if(e.key==='Delete'&&self.cur){e.preventDefault();self.deleteCurrent();}
+      if(e.key==='Escape'){var ms=document.querySelectorAll('.modal-overlay');for(var i=0;i<ms.length;i++)ms[i].remove();}
+      if(e.key==='Enter'){
+        // If login overlay is visible, trigger login
+        var lo=document.getElementById('login-overlay');
+        if(lo.style.display!=='none'&&lo.style.display!==''){Auth.doLogin();}
+      }
+    });
+    window.addEventListener('resize',function(){if(self.cur){self._view(self.cur);self._updateNavButtons();}});
+
+    // Touch swipe for mobile photo navigation
+    var touchStartX=0,touchStartY=0;
+    var viewer=document.getElementById('viewer');
+    viewer.addEventListener('touchstart',function(e){
+      if(e.touches.length===1){touchStartX=e.touches[0].clientX;touchStartY=e.touches[0].clientY;}
+    },{passive:true});
+    viewer.addEventListener('touchend',function(e){
+      if(!self.cur||self.photos.length<2)return;
+      var dx=(e.changedTouches[0]||{}).clientX-touchStartX;
+      var dy=(e.changedTouches[0]||{}).clientY-touchStartY;
+      if(Math.abs(dx)>50&&Math.abs(dx)>Math.abs(dy)){
+        self.navPhoto(dx<0?1:-1);
+      }
+    });
+  },
+
+  importFiles:function(){
+    document.getElementById('file-input').click();
+  },
+
+  // ---- Import ----
+  _doImport:function(files){
+    var self=this;
+    var total=files.length;
+    console.log('Importing '+total+' file(s)...');
+    self._showLoad('导入中 (0/'+total+')...');
+    var n=0,failed=0;
+    var CONCURRENCY=4; // parallel imports for speed
+
+    function updateProgress(){
+      self._showLoad('导入中 ('+(n+failed)+'/'+total+')...');
+    }
+
+    function processOne(file){
+      return self._importOne(file).then(function(){
+        n++;
+        updateProgress();
+      }).catch(function(e){
+        failed++;
+        console.error('Failed:',file.name,e);
+        updateProgress();
+      });
+    }
+
+    // Process in parallel batches
+    var idx=0;
+    function nextBatch(){
+      if(idx>=total){
+        self._hideLoad();
+        self.refresh();
+        if(n>0)toast('成功导入 '+n+' / '+total+' 张'+(failed>0?('，'+failed+' 张失败'):''),'ok');
+        else toast('导入失败，请检查文件格式','err');
+        return;
+      }
+      var batch=[];
+      for(var i=0;i<CONCURRENCY&&idx<total;i++,idx++){
+        batch.push(processOne(files[idx]));
+      }
+      Promise.allSettled(batch).then(function(){nextBatch();});
+    }
+    nextBatch();
+  },
+
+  _importOne:function(file){
+    var self=this;
+    var raw=isRAW(file.name);
+
+    return file.arrayBuffer().then(function(ab){
+      if(raw){
+        var jpeg=extractBestJPEG(ab);
+        if(!jpeg)throw new Error('无法解码 RAW');
+        var dispBlob=new Blob([jpeg],{type:'image/jpeg'});
+        var rawBlob=new Blob([ab]);
+        return blobToImg(dispBlob).then(function(img){
+          return {disp:dispBlob,raw:rawBlob,w:img.width,h:img.height};
+        });
+      }
+      var blob=new Blob([ab],{type:file.type||'application/octet-stream'});
+      return blobToImg(blob).then(function(img){
+        return {disp:blob,raw:blob,w:img.width,h:img.height};
+      });
+    }).then(function(r){
+      return self._makeThumb(r.disp,r.w,r.h).then(function(thumb){
+        return DB.add({
+          id:uid(),fileName:file.name,fileSize:file.size,
+          format:raw?'raw':file.name.split('.').pop().toLowerCase(),
+          rawBlob:r.raw,dispBlob:r.disp,thumbBlob:thumb,
+          dispW:r.w,dispH:r.h,added:Date.now(),
+          userId:self.currentUser.id,
+          deviceId:self._deviceId,
+          sourceUserId:null,
+          sourceUsername:null
+        });
+      });
+    });
+  },
+
+  _makeThumb:function(blob,sw,sh){
+    return blobToImg(blob).then(function(img){
+      var w=sw,h=sh,mw=200,mh=150;
+      if(w>mw){h=h*mw/w;w=mw;}if(h>mh){w=w*mh/h;h=mh;}
+      var c=document.createElement('canvas');c.width=Math.round(w);c.height=Math.round(h);
+      c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+      return new Promise(function(r){c.toBlob(r,'image/jpeg',0.7);});
+    });
+  },
+
+  // ---- List ----
+  refresh:function(){
+    var self=this;
+    return DB.all().then(function(photos){
+      self.photos=photos;
+      for(var i=0;i<photos.length;i++){
+        var p=photos[i];
+        if(!self.urlCache[p.id+'_t'])self.urlCache[p.id+'_t']=URL.createObjectURL(p.thumbBlob);
+        if(!self.urlCache[p.id+'_d'])self.urlCache[p.id+'_d']=URL.createObjectURL(p.dispBlob);
+      }
+      self._renderList();
+      self._updateNavButtons();
+      document.getElementById('st-count').textContent='共 '+photos.length+' 张';
+      document.getElementById('sidebar-count').textContent=photos.length;
+    });
+  },
+
+  _renderList:function(){
+    var self=this,list=document.getElementById('sidebar-list');
+    list.innerHTML='';
+    if(self.photos.length===0){
+      list.innerHTML='<div class="sidebar-empty"><span class="icon">📷</span><div>还没有导入照片</div><div style="font-size:10px;opacity:0.6">点击「导入」或拖拽文件到此窗口</div></div>';
+      return;
+    }
+    var did=self._deviceId,local=[],otherDev=[],received=[];
+    for(var i=0;i<self.photos.length;i++){
+      var p=self.photos[i];
+      if(p.sourceUserId){received.push(p);}
+      else if(!p.deviceId||p.deviceId===did){local.push(p);}
+      else{otherDev.push(p);}
+    }
+    var sections=[];
+    if(local.length)sections.push({label:'📱 本设备',id:'local',photos:local});
+    if(otherDev.length)sections.push({label:'💻 其他设备',id:'other-device',photos:otherDev});
+    if(received.length)sections.push({label:'📨 来自其他用户',id:'received',photos:received});
+    if(sections.length===1&&sections[0].id==='local'){
+      self._renderFlatList(list,local);
+    }else{
+      for(var s=0;s<sections.length;s++){self._renderSection(list,sections[s]);}
+    }
+  },
+
+  _renderFlatList:function(container,photos){
+    var self=this;
+    for(var i=0;i<photos.length;i++){(function(p){
+      var d=document.createElement('div');
+      d.className='sidebar-item';
+      if(self.cur&&self.cur.id===p.id)d.classList.add('active');
+      var srcBadge='';
+      if(p.sourceUserId&&p.sourceUsername){
+        srcBadge='<span class="src-badge">📨 '+esc(p.sourceUsername)+'</span>';
+      }
+      d.innerHTML='<img class="thumb" src="'+self.urlCache[p.id+'_t']+'" loading="lazy"><div class="info"><div class="name">'+esc(p.fileName)+'</div><div class="meta">'+fmtSize(p.fileSize)+' · '+p.dispW+'×'+p.dispH+'</div></div>'+srcBadge+'<span class="badge '+(p.format==='raw'?'badge-raw':'badge-other')+'">'+p.format.toUpperCase()+'</span>';
+      d.addEventListener('click',function(){self._select(p.id);});
+      container.appendChild(d);
+    })(photos[i]);}
+  },
+
+  _renderSection:function(parent,section){
+    var self=this;
+    var header=document.createElement('div');
+    header.className='sec-header';
+    if(self._sectionState[section.id])header.classList.add('folded');
+    header.innerHTML='<span class="arr">▼</span>'+section.label+'<span class="sec-count">'+section.photos.length+'</span>';
+
+    var body=document.createElement('div');
+    body.className='sec-body';
+    if(self._sectionState[section.id])body.classList.add('hidden');
+
+    self._renderFlatList(body,section.photos);
+
+    header.addEventListener('click',function(){
+      self._sectionState[section.id]=!self._sectionState[section.id];
+      header.classList.toggle('folded');
+      body.classList.toggle('hidden');
+    });
+
+    parent.appendChild(header);
+    parent.appendChild(body);
+  },
+
+  // ---- Select / View ----
+  _select:function(id){
+    var self=this;
+    self._showLoad('加载中...');
+    DB.get(id).then(function(p){
+      if(!p){toast('照片数据丢失','err');self._hideLoad();return;}
+      if(!self.urlCache[p.id+'_d'])self.urlCache[p.id+'_d']=URL.createObjectURL(p.dispBlob);
+      if(!self.urlCache[p.id+'_t'])self.urlCache[p.id+'_t']=URL.createObjectURL(p.thumbBlob);
+      self.cur=p;
+      self._view(p);
+      self._renderList();
+      self._updateNavButtons();
+      document.getElementById('btn-dl').disabled=false;
+      document.getElementById('btn-del').disabled=false;
+      document.getElementById('btn-send').disabled=false;
+      document.getElementById('st-file').textContent=p.fileName;
+      document.getElementById('viewer-empty').style.display='none';
+      self._hideLoad();
+      // On mobile, collapse sidebar after selecting a photo
+      if(window.innerWidth<=768){self.collapseSidebar();}
+    }).catch(function(e){
+      console.error(e);
+      toast('加载失败','err');
+      self._hideLoad();
+    });
+  },
+
+  /** Show/hide mobile navigation buttons based on photo count */
+  _updateNavButtons:function(){
+    var prev=document.getElementById('nav-prev');
+    var next=document.getElementById('nav-next');
+    if(this.photos.length>1&&window.innerWidth<=768){
+      prev.style.display='flex';next.style.display='flex';
+    }else{
+      prev.style.display='none';next.style.display='none';
+    }
+  },
+
+  /** Navigate to previous/next photo */
+  navPhoto:function(dir){
+    var self=this;
+    if(!self.cur||self.photos.length<2)return;
+    var idx=-1;
+    for(var i=0;i<self.photos.length;i++){if(self.photos[i].id===self.cur.id){idx=i;break;}}
+    if(idx<0)return;
+    var next=idx+dir;
+    if(next<0)next=self.photos.length-1;
+    if(next>=self.photos.length)next=0;
+    self._select(self.photos[next].id);
+  },
+
+  /** Toggle sidebar on mobile */
+  toggleSidebar:function(){
+    var sidebar=document.getElementById('sidebar');
+    sidebar.classList.toggle('collapsed');
+  },
+
+  /** Collapse sidebar (e.g., after selecting photo on mobile) */
+  collapseSidebar:function(){
+    var sidebar=document.getElementById('sidebar');
+    if(!sidebar.classList.contains('collapsed')){
+      sidebar.classList.add('collapsed');
+    }
+  },
+
+  /** Expand sidebar */
+  expandSidebar:function(){
+    var sidebar=document.getElementById('sidebar');
+    if(sidebar.classList.contains('collapsed')){
+      sidebar.classList.remove('collapsed');
+    }
+  },
+
+  _view:function(p){
+    var img=document.getElementById('viewer-img');
+    img.src=this.urlCache[p.id+'_d'];
+    img.style.display='block';
+    var bar=document.getElementById('info-bar');
+    bar.style.display='flex';
+    document.getElementById('info-name').textContent=p.fileName;
+    document.getElementById('info-size').textContent=fmtSize(p.fileSize);
+    document.getElementById('info-dim').textContent=p.dispW+'×'+p.dispH;
+    document.getElementById('info-fmt').textContent=p.format.toUpperCase();
+    var srcEl=document.getElementById('info-source');
+    if(p.sourceUserId&&p.sourceUsername){
+      srcEl.textContent='来自: '+p.sourceUsername;srcEl.style.display='';
+    }else{
+      srcEl.style.display='none';
+    }
+  },
+
+  // ---- Delete ----
+  deleteCurrent:function(){
+    var self=this;
+    if(!self.cur)return;
+    if(!confirm('确定删除 "'+self.cur.fileName+'"？'))return;
+    var id=self.cur.id;
+    ['_t','_d'].forEach(function(k){var ck=id+k;if(self.urlCache[ck]){URL.revokeObjectURL(self.urlCache[ck]);delete self.urlCache[ck];}});
+    DB.del(id).then(function(){
+      self.cur=null;
+      document.getElementById('viewer-img').style.display='none';
+      document.getElementById('info-bar').style.display='none';
+      document.getElementById('viewer-empty').style.display='flex';
+      document.getElementById('st-file').textContent='未打开文件';
+      document.getElementById('btn-dl').disabled=true;
+      document.getElementById('btn-del').disabled=true;
+      document.getElementById('btn-send').disabled=true;
+      return self.refresh().then(function(){self._updateNavButtons();});
+    }).then(function(){toast('已删除','info');}).catch(function(e){console.error(e);});
+  },
+
+  // ---- Send photo to another user ----
+  showSend:function(){
+    var self=this;
+    if(!self.cur)return;
+    var ms=document.querySelectorAll('.modal-overlay');
+    for(var i=0;i<ms.length;i++)ms[i].remove();
+
+    UserStore.all().then(function(users){
+      var others=users.filter(function(u){return u.id!==self.currentUser.id;});
+      if(others.length===0){toast('没有其他用户可发送','info');return;}
+
+      var overlay=document.createElement('div');overlay.className='modal-overlay';
+      var cardsHTML='';
+      for(var i=0;i<others.length;i++){
+        cardsHTML+='<div class="send-user-card" data-uid="'+others[i].id+'" data-uname="'+esc(others[i].username)+'">'+
+          '<span class="send-user-icon">👤</span>'+
+          '<span class="send-user-name">'+esc(others[i].username)+'</span>'+
+          '<span class="send-user-role">'+(others[i].role==='admin'?'管理员':'用户')+'</span></div>';
+      }
+      overlay.innerHTML='<div class="modal" style="max-width:420px"><h3>📨 发送照片</h3>'+
+        '<p>将 <b>'+esc(self.cur.fileName)+'</b> 无损发送给其他用户</p>'+
+        '<p style="font-size:10px;color:var(--t2)">接收用户将在「来自其他用户」分区中查看此照片</p>'+
+        '<div class="send-user-list">'+cardsHTML+'</div>'+
+        '<div class="send-err" id="send-err"></div>'+
+        '<div class="btns"><button onclick="this.closest(\'.modal-overlay\').remove()">取消</button>'+
+        '<button class="primary" id="btn-send-go" disabled>发送</button></div></div>';
+      document.body.appendChild(overlay);
+
+      var selUid=null;
+      overlay.querySelectorAll('.send-user-card').forEach(function(card){
+        card.addEventListener('click',function(){
+          overlay.querySelectorAll('.send-user-card').forEach(function(c){c.classList.remove('sel');});
+          card.classList.add('sel');
+          selUid=card.dataset.uid;
+          overlay.querySelector('#btn-send-go').disabled=false;
+        });
+      });
+      overlay.querySelector('#btn-send-go').addEventListener('click',function(){
+        if(!selUid)return;
+        var btn=this;btn.disabled=true;btn.textContent='发送中...';
+        overlay.remove();
+        self._doSend(selUid);
+      });
+      overlay.addEventListener('click',function(e){if(e.target===overlay)overlay.remove();});
+    }).catch(function(e){console.error(e);toast('无法加载用户列表','err');});
+  },
+
+  _doSend:function(recipientId){
+    var self=this;
+    if(!self.cur)return;
+    self._showLoad('发送中...');
+    UserStore.all().then(function(users){
+      var recipient=null;
+      for(var i=0;i<users.length;i++){if(users[i].id===recipientId){recipient=users[i];break;}}
+      if(!recipient)throw new Error('用户不存在');
+      var copy={
+        id:uid(),
+        fileName:self.cur.fileName,
+        fileSize:self.cur.fileSize,
+        format:self.cur.format,
+        rawBlob:self.cur.rawBlob,
+        dispBlob:self.cur.dispBlob,
+        thumbBlob:self.cur.thumbBlob,
+        dispW:self.cur.dispW,
+        dispH:self.cur.dispH,
+        added:Date.now(),
+        userId:recipientId,
+        deviceId:self.cur.deviceId||self._deviceId,
+        sourceUserId:self.currentUser.id,
+        sourceUsername:self.currentUser.username
+      };
+      return DB.add(copy);
+    }).then(function(){
+      self._hideLoad();
+      toast('照片已发送','ok');
+    }).catch(function(e){
+      console.error(e);
+      self._hideLoad();
+      toast('发送失败','err');
+    });
+  },
+
+  // ---- Export ----
+  showExport:function(){
+    var self=this;
+    if(!self.cur)return;
+    var ms=document.querySelectorAll('.modal-overlay');for(var i=0;i<ms.length;i++)ms[i].remove();
+
+    var overlay=document.createElement('div');overlay.className='modal-overlay';
+    overlay.innerHTML='<div class="modal" style="max-width:500px"><h3>💾 下载</h3><p>'+esc(self.cur.fileName)+' ('+fmtSize(self.cur.fileSize)+')</p><p style="font-size:9px;color:var(--t2);margin-bottom:8px">所有格式均适用于任何照片类型 · TIFF 为无损格式</p><div class="fgrid"><div class="fopt sel" data-f="orig">原始文件</div><div class="fopt" data-f="jpeg">JPEG</div><div class="fopt" data-f="png">PNG</div><div class="fopt" data-f="webp">WebP</div><div class="fopt" data-f="tiff">TIFF 无损</div><div class="fopt" data-f="bmp">BMP</div></div><div class="qrow" id="qrow"><span style="font-size:10px;color:var(--t2)">画质:</span><input type="range" id="qsl" min="10" max="100" value="95"><span style="font-size:10px;color:var(--ac)" id="qval">95</span></div><div class="btns"><button onclick="this.closest(\'.modal-overlay\').remove()">取消</button><button class="primary" id="btn-go">下载</button></div></div>';
+    document.body.appendChild(overlay);
+
+    var sel='orig';
+    overlay.querySelectorAll('.fopt').forEach(function(o){o.addEventListener('click',function(){
+      overlay.querySelectorAll('.fopt').forEach(function(x){x.classList.remove('sel');});
+      o.classList.add('sel');sel=o.dataset.f;
+      overlay.querySelector('#qrow').style.display=(sel==='jpeg'||sel==='webp')?'flex':'none';
+    });});
+    overlay.querySelector('#qsl').addEventListener('input',function(){overlay.querySelector('#qval').textContent=this.value;});
+
+    overlay.querySelector('#btn-go').addEventListener('click',function(){
+      overlay.remove();self._export(sel,parseInt(overlay.querySelector('#qsl').value)/100);
+    });
+    overlay.addEventListener('click',function(e){if(e.target===overlay)overlay.remove();});
+  },
+
+  _export:function(fmt,q){
+    var self=this;
+    if(fmt==='orig'){self._dl(self.cur.rawBlob,self.cur.fileName);toast('原始文件已下载','ok');return;}
+    var mimes={jpeg:'image/jpeg',png:'image/png',webp:'image/webp',tiff:'image/tiff',bmp:'image/bmp'};
+    var exts={jpeg:'jpg',png:'png',webp:'webp',tiff:'tif',bmp:'bmp'};
+    var bn=self.cur.fileName.replace(/\.[^.]+$/,'');
+    self._showLoad('转换中...');
+    blobToImg(self.cur.dispBlob).then(function(img){
+      var c=document.createElement('canvas');c.width=img.width;c.height=img.height;
+      c.getContext('2d').drawImage(img,0,0);
+      var opts=(fmt==='jpeg'||fmt==='webp')?[mimes[fmt],q]:[mimes[fmt]];
+      c.toBlob(function(b){self._dl(b,bn+'.'+exts[fmt]);self._hideLoad();toast('已下载 '+fmt.toUpperCase(),'ok');},opts[0],opts[1]);
+    }).catch(function(){self._hideLoad();toast('转换失败','err');});
+  },
+
+  _dl:function(blob,fn){
+    var u=URL.createObjectURL(blob),a=document.createElement('a');
+    a.href=u;a.download=fn;document.body.appendChild(a);a.click();
+    document.body.removeChild(a);setTimeout(function(){URL.revokeObjectURL(u);},5000);
+  },
+
+  _updateStore:function(){
+    if('storage' in navigator&&'estimate' in navigator.storage){
+      navigator.storage.estimate().then(function(e){document.getElementById('st-store').textContent='存储: '+(e.usage/1048576).toFixed(1)+' MB / '+(e.quota/1048576).toFixed(0)+' MB';}).catch(function(){});
+    }
+  },
+
+  // ---- Admin: Register new user ----
+  showRegister:function(){
+    var self=this;
+    if(!self.currentUser||self.currentUser.role!=='admin'){toast('仅管理员可注册新用户','err');return;}
+    var ms=document.querySelectorAll('.modal-overlay');for(var i=0;i<ms.length;i++)ms[i].remove();
+
+    var overlay=document.createElement('div');overlay.className='modal-overlay';
+    overlay.innerHTML='<div class="modal" style="max-width:420px"><h3>👤 注册新用户</h3><div class="form-field"><label>用户名</label><input type="text" id="reg-user" placeholder="请输入新用户名" autocomplete="off"></div><div class="form-field"><label>密码</label><input type="password" id="reg-pass" placeholder="请输入密码"></div><div class="form-field"><label>确认密码</label><input type="password" id="reg-pass2" placeholder="请再次输入密码"></div><div class="form-err" id="reg-err"></div><div class="btns"><button onclick="this.closest(\'.modal-overlay\').remove()">取消</button><button class="primary" id="btn-reg-go">注册</button></div></div>';
+    document.body.appendChild(overlay);
+
+    overlay.querySelector('#btn-reg-go').addEventListener('click',function(){
+      var username=overlay.querySelector('#reg-user').value.trim();
+      var pass=overlay.querySelector('#reg-pass').value;
+      var pass2=overlay.querySelector('#reg-pass2').value;
+      var errEl=overlay.querySelector('#reg-err');
+
+      if(!username){errEl.textContent='请输入用户名';return;}
+      if(username.length<2){errEl.textContent='用户名至少2个字符';return;}
+      if(!pass){errEl.textContent='请输入密码';return;}
+      if(pass.length<4){errEl.textContent='密码至少4个字符';return;}
+      if(pass!==pass2){errEl.textContent='两次密码不一致';return;}
+
+      var btn=overlay.querySelector('#btn-reg-go');
+      btn.disabled=true;btn.textContent='注册中...';errEl.textContent='';
+
+      UserStore.exists(username).then(function(exists){
+        if(exists){errEl.textContent='用户名已存在';btn.disabled=false;btn.textContent='注册';return;}
+        return UserStore.create(username,pass,'user');
+      }).then(function(user){
+        if(user){
+          overlay.remove();
+          toast('用户 "'+username+'" 注册成功！','ok');
+        }else{
+          btn.disabled=false;btn.textContent='注册';
+        }
+      }).catch(function(e){
+        console.error(e);
+        errEl.textContent='注册失败，请重试';
+        btn.disabled=false;btn.textContent='注册';
+      });
+    });
+
+    overlay.addEventListener('click',function(e){if(e.target===overlay)overlay.remove();});
+    // Focus first field
+    setTimeout(function(){overlay.querySelector('#reg-user').focus();},100);
+  }
+};
+
+// ============================================================
+// Boot
+// ============================================================
+document.addEventListener('DOMContentLoaded',function(){
+  DB.open().then(function(){
+    return Auth.seedAdmin();
+  }).then(function(){
+    if(Auth.checkSession()){
+      // Already logged in (session exists)
+      Auth.hideLogin();
+      App.init();
+    }else{
+      Auth.showLogin();
+      document.getElementById('login-user').focus();
+    }
+  }).catch(function(e){
+    console.error('Init failed:',e);
+    toast('初始化失败，请刷新页面重试','err');
+  });
+});
+</script>
+</body>
+</html>
