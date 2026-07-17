@@ -390,12 +390,15 @@ var Auth={
   seedAdmin:function(){
     var self=this;
     return FB.countUsers().then(function(count){
-      if(count>0)return;
+      if(count>0)return true;
       return self.hashPassword('handongxu*963.').then(function(hash){
         return FB.addUser({
           id:uid(),username:'hansense',passwordHash:hash,role:'admin',created:Date.now()
-        });
+        }).then(function(){return true;});
       });
+    }).catch(function(e){
+      console.warn('seedAdmin: 无法检查/创建管理员 (可能 Firestore 未就绪):',e.message);
+      return false; // Don't block — admin might already exist in a previous setup
     });
   },
 
@@ -457,8 +460,12 @@ var Auth={
       if(user){self.setSession(user);self.hideLogin();App.init();}
       else{errEl.textContent='用户名或密码错误';btn.disabled=false;btn.textContent='登 录';}
     }).catch(function(e){
-      console.error(e);
-      errEl.textContent='登录失败: '+(e.message||'请检查 Firebase 配置');btn.disabled=false;btn.textContent='登 录';
+      console.error('Login error:',e);
+      var msg=e.message||String(e);
+      if(msg.indexOf('permission-denied')>=0||msg.indexOf('Missing or insufficient')>=0)msg='Firestore 权限不足，请在 Firebase Console → Firestore → 规则 中设置为允许读写';
+      else if(msg.indexOf('does not exist')>=0)msg='Firestore 数据库未创建，请在 Firebase Console → Firestore → 创建数据库';
+      else if(msg.indexOf('network')>=0||msg.indexOf('fetch')>=0)msg='网络错误，无法连接 Firebase，请检查网络';
+      errEl.textContent='登录失败: '+msg;btn.disabled=false;btn.textContent='登 录';
     });
   },
   logout:function(){
@@ -1026,19 +1033,30 @@ var App={
 // Boot
 // ============================================================
 document.addEventListener('DOMContentLoaded',function(){
+  // Show login UI immediately so user isn't staring at a blank screen
+  Auth.showLogin();
+  document.getElementById('login-btn').disabled=true;
+  document.getElementById('login-err').textContent='正在连接 Firebase...';
+
   FB.init().then(function(){
-    return Auth.seedAdmin();
+    // Try to seed admin (non-blocking — login works even if this fails)
+    return Auth.seedAdmin().catch(function(e){
+      console.warn('Admin seed warning (may be OK):',e.message);
+    });
   }).then(function(){
+    document.getElementById('login-btn').disabled=false;
+    document.getElementById('login-err').textContent='';
     if(Auth.checkSession()){
       Auth.hideLogin();App.init();
     }else{
-      Auth.showLogin();document.getElementById('login-user').focus();
+      document.getElementById('login-user').focus();
     }
   }).catch(function(e){
     console.error('Init failed:',e);
     var msg=e.message||String(e);
-    Auth.showLogin();
-    document.getElementById('login-err').textContent='初始化失败: '+msg;
+    if(msg.indexOf('YOUR_API_KEY')>=0)msg='请先在代码中配置 FIREBASE_CONFIG';
+    document.getElementById('login-btn').disabled=false;
+    document.getElementById('login-err').textContent=msg;
   });
 });
 </script>
