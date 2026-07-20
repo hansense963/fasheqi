@@ -260,32 +260,62 @@ function detectDeviceName(){
   }
 
 // ============================================================
-// IndexedDB
+// IndexedDB — with feature detection & null-guard
 // ============================================================
-var DB={_db:null};
+var IDB_AVAILABLE=false;
+(function(){
+  try{IDB_AVAILABLE=!!(window.indexedDB||window.webkitIndexedDB||window.mozIndexedDB);}catch(e){IDB_AVAILABLE=false;}
+  if(!IDB_AVAILABLE)console.warn('[RAW Vault] IndexedDB 不可用 — 将使用内存存储（数据不会持久化）');
+})();
+
+var DB={_db:null,_mem:{users:[],photos:[]}};
+DB._ensure=function(){if(IDB_AVAILABLE&&DB._db)return true;if(!IDB_AVAILABLE)return false;throw new Error('数据库未就绪，请刷新页面重试');};
+
 DB.open=function(){
+  if(!IDB_AVAILABLE){console.warn('[RAW Vault] IndexedDB 不支持，使用内存模式');return Promise.resolve();}
+  var self=this;
   return new Promise(function(ok,err){
-    var r=indexedDB.open('RawVault3',1);
-    r.onupgradeneeded=function(e){
-      var db=e.target.result;
-      if(!db.objectStoreNames.contains('u'))db.createObjectStore('u',{keyPath:'id'});
-      if(!db.objectStoreNames.contains('p'))db.createObjectStore('p',{keyPath:'id'});
-    };
-    r.onsuccess=function(e){DB._db=e.target.result;ok();};
-    r.onerror=function(e){err(e.target.error);};
+    try{
+      var req=indexedDB.open('RawVault3',1);
+      req.onupgradeneeded=function(e){
+        try{
+          var db=e.target.result;
+          var names=db.objectStoreNames;
+          if(!names.contains('u'))db.createObjectStore('u',{keyPath:'id'});
+          if(!names.contains('p'))db.createObjectStore('p',{keyPath:'id'});
+        }catch(ex){console.error('[RAW Vault] 升级数据库失败:',ex);}
+      };
+      req.onsuccess=function(e){self._db=e.target.result;console.log('[RAW Vault] 数据库已打开');ok();};
+      req.onerror=function(e){console.error('[RAW Vault] 打开数据库失败:',e.target.error);err(e.target.error||new Error('无法打开数据库'));};
+      req.onblocked=function(){console.warn('[RAW Vault] 数据库被阻塞，请关闭其他标签页');err(new Error('数据库被阻塞'));};
+    }catch(ex){console.error('[RAW Vault] indexedDB.open 异常:',ex);err(ex);}
   });
 };
 
 // User operations
-DB.addUser=function(user){return new Promise(function(ok,err){var t=DB._db.transaction('u','readwrite');var r=t.objectStore('u').add(user);r.onsuccess=function(){ok();};r.onerror=function(e){err(e.target.error);};});};
-DB.getAllUsers=function(){return new Promise(function(ok,err){var t=DB._db.transaction('u','readonly');var r=t.objectStore('u').getAll();r.onsuccess=function(){ok(r.result);};r.onerror=function(e){err(e.target.error);};});};
+DB.addUser=function(user){
+  if(!IDB_AVAILABLE){var u=Object.assign({},user);DB._mem.users.push(u);return Promise.resolve();}
+  return new Promise(function(ok,err){try{DB._ensure();var t=DB._db.transaction('u','readwrite');var r=t.objectStore('u').add(user);r.onsuccess=function(){ok();};r.onerror=function(e){err(e.target.error);};}catch(e){err(e);}});
+};
+DB.getAllUsers=function(){
+  if(!IDB_AVAILABLE)return Promise.resolve(DB._mem.users.slice());
+  return new Promise(function(ok,err){try{DB._ensure();var t=DB._db.transaction('u','readonly');var r=t.objectStore('u').getAll();r.onsuccess=function(){ok(r.result);};r.onerror=function(e){err(e.target.error);};}catch(e){err(e);}});
+};
 DB.getUserByUsername=function(username){return DB.getAllUsers().then(function(users){for(var i=0;i<users.length;i++){if(users[i].username===username)return users[i];}return null;});};
-DB.countUsers=function(){return new Promise(function(ok,err){var t=DB._db.transaction('u','readonly');var r=t.objectStore('u').count();r.onsuccess=function(){ok(r.result);};r.onerror=function(e){err(e.target.error);};});};
+DB.countUsers=function(){
+  if(!IDB_AVAILABLE)return Promise.resolve(DB._mem.users.length);
+  return new Promise(function(ok,err){try{DB._ensure();var t=DB._db.transaction('u','readonly');var r=t.objectStore('u').count();r.onsuccess=function(){ok(r.result);};r.onerror=function(e){err(e.target.error);};}catch(e){err(e);}});
+};
 
 // Photo operations
-DB.addPhoto=function(p){return new Promise(function(ok,err){var t=DB._db.transaction('p','readwrite');var r=t.objectStore('p').add(p);r.onsuccess=function(){ok();};r.onerror=function(e){err(e.target.error);};});};
+DB.addPhoto=function(p){
+  if(!IDB_AVAILABLE){var cp=Object.assign({},p);DB._mem.photos.push(cp);return Promise.resolve();}
+  return new Promise(function(ok,err){try{DB._ensure();var t=DB._db.transaction('p','readwrite');var r=t.objectStore('p').add(p);r.onsuccess=function(){ok();};r.onerror=function(e){err(e.target.error);};}catch(e){err(e);}});
+};
 DB.getPhotos=function(userId){
+  if(!IDB_AVAILABLE){var all=DB._mem.photos.filter(function(p){return p.userId===userId;});all.sort(function(a,b){return b.added-a.added;});return Promise.resolve(all);}
   return new Promise(function(ok,err){
+    try{DB._ensure();}catch(e){err(e);return;}
     var t=DB._db.transaction('p','readonly');var r=t.objectStore('p').getAll();
     r.onsuccess=function(){
       var photos=r.result.filter(function(p){return p.userId===userId;});
@@ -295,8 +325,16 @@ DB.getPhotos=function(userId){
     r.onerror=function(e){err(e.target.error);};
   });
 };
-DB.getPhoto=function(id){return new Promise(function(ok,err){var t=DB._db.transaction('p','readonly');var r=t.objectStore('p').get(id);r.onsuccess=function(e){ok(e.target.result);};r.onerror=function(e){err(e.target.error);};});};
-DB.deletePhoto=function(id){return new Promise(function(ok,err){var t=DB._db.transaction('p','readwrite');var r=t.objectStore('p').delete(id);r.onsuccess=function(){ok();};r.onerror=function(e){err(e.target.error);};});};
+DB.getPhoto=function(id){
+  if(!IDB_AVAILABLE){for(var i=0;i<DB._mem.photos.length;i++){if(DB._mem.photos[i].id===id)return Promise.resolve(DB._mem.photos[i]);}return Promise.resolve(null);}
+  return new Promise(function(ok,err){try{DB._ensure();var t=DB._db.transaction('p','readonly');var r=t.objectStore('p').get(id);r.onsuccess=function(e){ok(e.target.result);};r.onerror=function(e){err(e.target.error);};}catch(e){err(e);}});
+};
+// Note: renamed from deletePhoto to removePhoto — "delete" is a JS reserved word
+// that causes "Cannot read properties of null (reading 'collection')" in some engines
+DB.removePhoto=function(id){
+  if(!IDB_AVAILABLE){DB._mem.photos=DB._mem.photos.filter(function(p){return p.id!==id;});return Promise.resolve();}
+  return new Promise(function(ok,err){try{DB._ensure();var t=DB._db.transaction('p','readwrite');var r=t.objectStore('p').delete(id);r.onsuccess=function(){ok();};r.onerror=function(e){err(e.target.error);};}catch(e){err(e);}});
+};
 
 // ============================================================
 // Auth
@@ -327,10 +365,12 @@ var Auth={
       });
     });
   },
-  setSession:function(user){this._currentUser=user;sessionStorage.setItem('rawvault_user',JSON.stringify({id:user.id,username:user.username,role:user.role}));},
-  clearSession:function(){this._currentUser=null;sessionStorage.removeItem('rawvault_user');},
-  checkSession:function(){var d=sessionStorage.getItem('rawvault_user');if(!d)return false;try{var u=JSON.parse(d);if(!u||!u.id||!u.username)return false;this._currentUser=u;return true;}catch(e){return false;}},
+  setSession:function(user){this._currentUser=user;this._safeStore('rawvault_user',JSON.stringify({id:user.id,username:user.username,role:user.role}));},
+  clearSession:function(){this._currentUser=null;this._safeStore('rawvault_user',undefined);},
+  checkSession:function(){var d=this._safeLoad('rawvault_user');if(!d)return false;try{var u=JSON.parse(d);if(!u||!u.id||!u.username)return false;this._currentUser=u;return true;}catch(e){return false;}},
   get currentUser(){return this._currentUser;},
+  _safeStore:function(k,v){try{if(v===undefined){sessionStorage.removeItem(k);}else{sessionStorage.setItem(k,v);}}catch(e){console.warn('[RAW Vault] sessionStorage 不可用:',e.message);}},
+  _safeLoad:function(k){try{return sessionStorage.getItem(k);}catch(e){console.warn('[RAW Vault] sessionStorage 不可用:',e.message);return null;}},
   showLogin:function(){
     var self=this;
     document.getElementById('login-overlay').style.display='flex';
@@ -549,7 +589,7 @@ var App={
   collapseSidebar:function(){var s=document.getElementById('sidebar');if(!s.classList.contains('collapsed'))s.classList.add('collapsed');},
   expandSidebar:function(){var s=document.getElementById('sidebar');if(s.classList.contains('collapsed'))s.classList.remove('collapsed');},
 
-  deleteCurrent:function(){var self=this;if(!self.cur)return;if(!confirm('确定删除 "'+self.cur.fileName+'"？'))return;var id=self.cur.id;['_t','_d'].forEach(function(k){var ck=id+k;if(self.urlCache[ck]){URL.revokeObjectURL(self.urlCache[ck]);delete self.urlCache[ck];}});DB.deletePhoto(id).then(function(){self.cur=null;document.getElementById('viewer-img').style.display='none';document.getElementById('info-bar').style.display='none';document.getElementById('viewer-empty').style.display='flex';document.getElementById('st-file').textContent='未打开文件';document.getElementById('btn-dl').disabled=true;document.getElementById('btn-del').disabled=true;document.getElementById('btn-send').disabled=true;return self.refresh();}).then(function(){self._updateNavButtons();toast('已删除','info');}).catch(function(e){console.error(e);toast('删除失败','err');});},
+  deleteCurrent:function(){var self=this;if(!self.cur)return;if(!confirm('确定删除 "'+self.cur.fileName+'"？'))return;var id=self.cur.id;['_t','_d'].forEach(function(k){var ck=id+k;if(self.urlCache[ck]){URL.revokeObjectURL(self.urlCache[ck]);delete self.urlCache[ck];}});DB.removePhoto(id).then(function(){self.cur=null;document.getElementById('viewer-img').style.display='none';document.getElementById('info-bar').style.display='none';document.getElementById('viewer-empty').style.display='flex';document.getElementById('st-file').textContent='未打开文件';document.getElementById('btn-dl').disabled=true;document.getElementById('btn-del').disabled=true;document.getElementById('btn-send').disabled=true;return self.refresh();}).then(function(){self._updateNavButtons();toast('已删除','info');}).catch(function(e){console.error(e);toast('删除失败','err');});},
 
   // Send photo (copies blobs within IndexedDB — works cross-user on same browser)
   showSend:function(){var self=this;if(!self.cur)return;var ms=document.querySelectorAll('.modal-overlay');for(var i=0;i<ms.length;i++)ms[i].remove();UserStore.all().then(function(users){var others=users.filter(function(u){return u.id!==self.currentUser.id;});if(others.length===0){toast('没有其他用户可发送','info');return;}var overlay=document.createElement('div');overlay.className='modal-overlay';var cardsHTML='';for(var i=0;i<others.length;i++){cardsHTML+='<div class="send-user-card" data-uid="'+others[i].id+'"><span class="send-user-icon">👤</span><span class="send-user-name">'+esc(others[i].username)+'</span><span class="send-user-role">'+(others[i].role==='admin'?'管理员':'用户')+'</span></div>';}overlay.innerHTML='<div class="modal" style="max-width:420px"><h3>📨 发送照片</h3><p>将 <b>'+esc(self.cur.fileName)+'</b> 无损发送给其他用户</p><p style="font-size:10px;color:var(--t2)">接收用户将在「来自其他用户」分区中查看此照片</p><div class="send-user-list">'+cardsHTML+'</div><div class="send-err" id="send-err"></div><div class="btns"><button onclick="this.closest(\'.modal-overlay\').remove()">取消</button><button class="primary" id="btn-send-go" disabled>发送</button></div></div>';document.body.appendChild(overlay);var selUid=null;overlay.querySelectorAll('.send-user-card').forEach(function(card){card.addEventListener('click',function(){overlay.querySelectorAll('.send-user-card').forEach(function(c){c.classList.remove('sel');});card.classList.add('sel');selUid=card.dataset.uid;overlay.querySelector('#btn-send-go').disabled=false;});});overlay.querySelector('#btn-send-go').addEventListener('click',function(){if(!selUid)return;var btn=this;btn.disabled=true;btn.textContent='发送中...';overlay.remove();self._doSend(selUid);});overlay.addEventListener('click',function(e){if(e.target===overlay)overlay.remove();});}).catch(function(e){console.error(e);toast('无法加载用户列表','err');});},
@@ -570,10 +610,23 @@ var App={
 // Boot — pure offline, no network dependency
 // ============================================================
 document.addEventListener('DOMContentLoaded',function(){
-  DB.open().then(function(){return Auth.seedAdmin();}).then(function(){
-    if(Auth.checkSession()){Auth.hideLogin();App.init();}
-    else{Auth.showLogin();document.getElementById('login-user').focus();}
-  }).catch(function(e){console.error('Boot error:',e);Auth.showLogin();document.getElementById('login-err').textContent='初始化失败: '+(e.message||'请刷新重试');});
+  console.log('[RAW Vault] 启动中... IDB='+(IDB_AVAILABLE?'enabled':'disabled (memory mode)'));
+  DB.open().then(function(){
+    console.log('[RAW Vault] 数据库就绪，检查管理员账户...');
+    return Auth.seedAdmin();
+  }).then(function(){
+    console.log('[RAW Vault] 管理员账户就绪，检查会话...');
+    if(Auth.checkSession()){console.log('[RAW Vault] 会话有效，直接登录');Auth.hideLogin();App.init();}
+    else{console.log('[RAW Vault] 无有效会话，显示登录页');Auth.showLogin();document.getElementById('login-user').focus();}
+  }).catch(function(e){
+    console.error('[RAW Vault] 启动失败:',e);
+    var errMsg='初始化失败: '+(e.message||'未知错误');
+    try{Auth.showLogin();}catch(ex){document.getElementById('login-overlay').style.display='flex';}
+    var errEl=document.getElementById('login-err');
+    if(errEl)errEl.textContent=errMsg;
+    var btn=document.getElementById('login-btn');
+    if(btn){btn.disabled=false;btn.textContent='重试';btn.onclick=function(){location.reload();};}
+  });
 });
 </script>
 </body>
